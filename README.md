@@ -439,6 +439,7 @@ docker-compose build
 - **[EXAMPLES.md](EXAMPLES.md)** - Ejemplos de integración (Bash, Python, Node, PHP, Go)
 - **[CHANGELOG.md](CHANGELOG.md)** - Historial de cambios
 - **[docs/ADVANCED_FEATURES.md](docs/ADVANCED_FEATURES.md)** - 🆕 Workers condicionales, Rate limiting, DLQ
+- **[docs/OPERATIONS.md](docs/OPERATIONS.md)** - 🆕 Guía de operaciones, alertas, backups y troubleshooting
 - **[docs/LOG_ROTATION.md](docs/LOG_ROTATION.md)** - Gestión y rotación de logs
 - **[docs/MONITORING.md](docs/MONITORING.md)** - Guía completa del stack de observabilidad
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas comunes

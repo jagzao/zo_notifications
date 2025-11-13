@@ -254,6 +254,7 @@ services:
       - '--web.console.templates=/usr/share/prometheus/consoles'
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     networks:
       - zo_network

@@ -2,6 +2,7 @@ import rateLimit from 'express-rate-limit';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
 import pool from '../services/database.js';
+import { rateLimitExceeded } from '../services/metrics.js';
 
 // Rate limiter por IP (básico, en memoria)
 export const rateLimitByIP = rateLimit({
@@ -78,6 +79,14 @@ export const rateLimitByAPIKey = async (req, res, next) => {
         current_count,
         limit: limit_max,
         ip: req.ip
+      });
+
+      // Incrementar métrica de Prometheus
+      rateLimitExceeded.inc({
+        api_key: apiKey.substring(0, 10) + '...',
+        project,
+        tier,
+        endpoint
       });
 
       return res.status(429).json({

@@ -124,6 +124,54 @@ export const errorsTotal = new client.Counter({
 });
 register.registerMetric(errorsTotal);
 
+// Dead Letter Queue: Tamaño actual
+export const dlqSize = new client.Gauge({
+  name: 'dlq_size',
+  help: 'Current number of jobs in Dead Letter Queue',
+  labelNames: ['channel'] // channel: webpush, discord, slack, email
+});
+register.registerMetric(dlqSize);
+
+// Dead Letter Queue: Jobs movidos a DLQ
+export const dlqJobsTotal = new client.Counter({
+  name: 'dlq_jobs_total',
+  help: 'Total number of jobs moved to DLQ',
+  labelNames: ['channel', 'error_type']
+});
+register.registerMetric(dlqJobsTotal);
+
+// Dead Letter Queue: Jobs reintentados desde DLQ
+export const dlqRetriesTotal = new client.Counter({
+  name: 'dlq_retries_total',
+  help: 'Total number of jobs retried from DLQ',
+  labelNames: ['channel', 'status'] // status: success, failed
+});
+register.registerMetric(dlqRetriesTotal);
+
+// Rate Limiting: Uso actual por API key
+export const rateLimitUsage = new client.Gauge({
+  name: 'rate_limit_usage',
+  help: 'Current rate limit usage per API key',
+  labelNames: ['api_key', 'project', 'tier']
+});
+register.registerMetric(rateLimitUsage);
+
+// Rate Limiting: Límite máximo por API key
+export const rateLimitMax = new client.Gauge({
+  name: 'rate_limit_max',
+  help: 'Maximum rate limit per API key',
+  labelNames: ['api_key', 'project', 'tier']
+});
+register.registerMetric(rateLimitMax);
+
+// Rate Limiting: Requests excedidos (429)
+export const rateLimitExceeded = new client.Counter({
+  name: 'rate_limit_exceeded_total',
+  help: 'Total number of rate limit exceeded events',
+  labelNames: ['api_key', 'project', 'tier', 'endpoint']
+});
+register.registerMetric(rateLimitExceeded);
+
 // ======================
 // Funciones auxiliares
 // ======================
@@ -161,6 +209,59 @@ export function updateDatabaseMetrics(pool) {
 }
 
 /**
+ * Actualiza métricas de DLQ desde Redis
+ * @param {Object} queueService - Servicio de queues
+ */
+export async function updateDLQMetrics(queueService) {
+  try {
+    const counts = await queueService.getDLQCount('all');
+
+    // Actualizar gauge por canal
+    for (const [channel, count] of Object.entries(counts.byChannel)) {
+      dlqSize.set({ channel }, count);
+    }
+  } catch (error) {
+    logger.error('Error updating DLQ metrics', { error: error.message });
+  }
+}
+
+/**
+ * Actualiza métricas de rate limiting desde DB
+ * @param {Object} pool - Pool de PostgreSQL
+ */
+export async function updateRateLimitMetrics(pool) {
+  try {
+    // Obtener uso actual de rate limits
+    const result = await pool.query(`
+      SELECT
+        ak.key,
+        ak.project,
+        ak.tier,
+        ak.rate_limit_max,
+        COALESCE(SUM(rlu.request_count), 0) as current_usage
+      FROM api_keys ak
+      LEFT JOIN rate_limit_usage rlu ON rlu.api_key = ak.key
+        AND rlu.window_start > NOW() - (ak.rate_limit_window_ms || ' milliseconds')::INTERVAL
+      WHERE ak.active = true
+      GROUP BY ak.key, ak.project, ak.tier, ak.rate_limit_max
+    `);
+
+    for (const row of result.rows) {
+      const labels = {
+        api_key: row.key.substring(0, 10) + '...',
+        project: row.project,
+        tier: row.tier
+      };
+
+      rateLimitUsage.set(labels, parseInt(row.current_usage));
+      rateLimitMax.set(labels, row.rate_limit_max);
+    }
+  } catch (error) {
+    logger.error('Error updating rate limit metrics', { error: error.message });
+  }
+}
+
+/**
  * Obtiene todas las métricas en formato Prometheus
  */
 export async function getMetrics() {
@@ -190,8 +291,16 @@ export default {
   apiKeyRequests,
   rateLimitBlocked,
   errorsTotal,
+  dlqSize,
+  dlqJobsTotal,
+  dlqRetriesTotal,
+  rateLimitUsage,
+  rateLimitMax,
+  rateLimitExceeded,
   updateQueueMetrics,
   updateDatabaseMetrics,
+  updateDLQMetrics,
+  updateRateLimitMetrics,
   getMetrics,
   getMetricsContentType
 };

@@ -1,0 +1,22 @@
+# Crontab para ZO Notifications
+# Tareas de mantenimiento automático
+
+# Formato: minuto hora día mes día_semana comando
+
+# Limpiar rate_limit_usage cada hora (datos > 24h)
+0 * * * * cd /app && /app/scripts/cleanup-rate-limits.sh >> /var/log/cron.log 2>&1
+
+# Backup de DLQ cada 6 horas (guarda jobs críticos)
+0 */6 * * * cd /app && /app/scripts/backup-dlq.sh >> /var/log/cron.log 2>&1
+
+# Limpieza de logs antiguos cada día a las 3 AM
+0 3 * * * find /app/logs -name "*.log" -type f -mtime +7 -delete
+
+# Health check cada 5 minutos (opcional - para debugging)
+# */5 * * * * curl -s http://localhost:3000/api/v1/health > /dev/null || echo "API health check failed" >> /var/log/cron.log
+
+# Reiniciar Prometheus para recargar reglas cada domingo a las 4 AM (opcional)
+# 0 4 * * 0 docker restart zo_prometheus
+
+# Limpieza de DLQ muy antiguos (> 7 días) - cada lunes a las 2 AM
+0 2 * * 1 cd /app && /app/scripts/cleanup-old-dlq.sh >> /var/log/cron.log 2>&1

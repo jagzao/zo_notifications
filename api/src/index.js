@@ -11,7 +11,7 @@ import queue from './services/queue.js';
 import { rateLimitByIP } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { metricsMiddleware } from './middleware/metrics.js';
-import { websocketConnections, websocketMessagesTotal, updateQueueMetrics } from './services/metrics.js';
+import { websocketConnections, websocketMessagesTotal, updateQueueMetrics, updateDLQMetrics, updateRateLimitMetrics } from './services/metrics.js';
 
 // Routes
 import healthRoutes from './routes/health.js';
@@ -138,17 +138,24 @@ async function initialize() {
     // Suscribirse a notificaciones
     await subscribeToNotifications();
 
-    // Actualizar métricas de queue periódicamente (cada 15 segundos)
+    // Actualizar métricas periódicamente (cada 15 segundos)
     const updateMetricsInterval = setInterval(async () => {
       try {
+        // Actualizar métricas de queues
         await updateQueueMetrics({
           webpush: queue.webPushQueue,
           discord: queue.discordQueue,
           slack: queue.slackQueue,
           email: queue.emailQueue
         });
+
+        // Actualizar métricas de DLQ
+        await updateDLQMetrics(queue);
+
+        // Actualizar métricas de rate limiting
+        await updateRateLimitMetrics(database.pool);
       } catch (error) {
-        logger.error('Error updating queue metrics', { error: error.message });
+        logger.error('Error updating metrics', { error: error.message });
       }
     }, 15000);
 

@@ -1,0 +1,265 @@
+# Prometheus Alert Rules para ZO Notifications
+# Monitorea DLQ, rate limits, queues, y health del sistema
+
+groups:
+  # ==========================================
+  # DEAD LETTER QUEUE ALERTS
+  # ==========================================
+  - name: dlq_alerts
+    interval: 30s
+    rules:
+      # DLQ creciendo (WARNING)
+      - alert: DLQGrowing
+        expr: redis_list_length{key=~".*:dlq"} > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: dlq
+        annotations:
+          summary: "DLQ tiene {{ $value }} items en {{ $labels.key }}"
+          description: "La Dead Letter Queue está creciendo. Revisa los jobs fallidos en /api/v1/dlq"
+
+      # DLQ muy grande (CRITICAL)
+      - alert: DLQCritical
+        expr: redis_list_length{key=~".*:dlq"} > 100
+        for: 10m
+        labels:
+          severity: critical
+          component: dlq
+        annotations:
+          summary: "DLQ CRÍTICA: {{ $value }} items en {{ $labels.key }}"
+          description: "Muchos jobs están fallando. Investiga urgentemente: http://localhost:3000/api/v1/dlq"
+
+      # DLQ creciendo rápidamente
+      - alert: DLQGrowthRate
+        expr: rate(redis_list_length{key=~".*:dlq"}[5m]) > 0.5
+        for: 3m
+        labels:
+          severity: warning
+          component: dlq
+        annotations:
+          summary: "DLQ creciendo rápidamente en {{ $labels.key }}"
+          description: "La DLQ está creciendo a {{ $value }} items/segundo"
+
+  # ==========================================
+  # QUEUE HEALTH ALERTS
+  # ==========================================
+  - name: queue_alerts
+    interval: 30s
+    rules:
+      # Cola con muchos jobs esperando
+      - alert: QueueBacklog
+        expr: bullmq_queue_waiting > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: queue
+        annotations:
+          summary: "Cola {{ $labels.queue }} con {{ $value }} jobs esperando"
+          description: "La cola está acumulando jobs. Revisa workers."
+
+      # Cola con muchos jobs activos (saturación)
+      - alert: QueueSaturated
+        expr: bullmq_queue_active > 50
+        for: 3m
+        labels:
+          severity: warning
+          component: queue
+        annotations:
+          summary: "Cola {{ $labels.queue }} saturada con {{ $value }} jobs activos"
+          description: "Workers al máximo. Considera escalar."
+
+      # Muchos jobs fallando
+      - alert: HighFailureRate
+        expr: rate(bullmq_queue_failed_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: critical
+          component: queue
+        annotations:
+          summary: "Alto ratio de fallas en cola {{ $labels.queue }}"
+          description: "{{ $value }} jobs/seg están fallando. Revisa logs y DLQ."
+
+  # ==========================================
+  # RATE LIMITING ALERTS
+  # ==========================================
+  - name: rate_limit_alerts
+    interval: 1m
+    rules:
+      # Proyecto cerca del límite
+      - alert: RateLimitNearLimit
+        expr: (api_rate_limit_current / api_rate_limit_max) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+          component: rate_limit
+        annotations:
+          summary: "Proyecto {{ $labels.project }} al {{ $value | humanizePercentage }} del límite"
+          description: "API key {{ $labels.api_key }} cerca del límite de rate limiting"
+
+      # Proyecto excediendo límite frecuentemente
+      - alert: RateLimitExceeded
+        expr: rate(api_rate_limit_exceeded_total[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: warning
+          component: rate_limit
+        annotations:
+          summary: "Proyecto {{ $labels.project }} excediendo límite"
+          description: "{{ $value }} requests/seg bloqueados por rate limiting"
+
+  # ==========================================
+  # WORKER HEALTH ALERTS
+  # ==========================================
+  - name: worker_health_alerts
+    interval: 30s
+    rules:
+      # Worker caído
+      - alert: WorkerDown
+        expr: up{job=~".*-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: "Worker {{ $labels.job }} CAÍDO"
+          description: "El worker no responde. Revisa logs: docker logs {{ $labels.container }}"
+
+      # Worker con memoria alta
+      - alert: WorkerHighMemory
+        expr: worker_memory_usage_bytes / worker_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "Worker {{ $labels.worker }} usando {{ $value | humanizePercentage }} de memoria"
+          description: "Posible memory leak. Considera reiniciar."
+
+      # Worker con CPU alta
+      - alert: WorkerHighCPU
+        expr: rate(worker_cpu_usage_seconds_total[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: "Worker {{ $labels.worker }} con CPU alta ({{ $value | humanizePercentage }})"
+          description: "Worker bajo carga sostenida"
+
+  # ==========================================
+  # DATABASE ALERTS
+  # ==========================================
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # PostgreSQL caído
+      - alert: PostgreSQLDown
+        expr: up{job="postgres-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL NO RESPONDE"
+          description: "Base de datos caída. Sistema degradado."
+
+      # Demasiadas conexiones
+      - alert: PostgreSQLTooManyConnections
+        expr: pg_stat_database_numbackends > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL con {{ $value }} conexiones activas"
+          description: "Cerca del límite de conexiones (max 100)"
+
+      # Redis caído
+      - alert: RedisDown
+        expr: up{job="redis-exporter"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis NO RESPONDE"
+          description: "Cache caído. Queues no funcionan."
+
+      # Redis con memoria alta
+      - alert: RedisHighMemory
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis usando {{ $value | humanizePercentage }} de memoria"
+          description: "Redis cerca del límite. Revisa eviction policy."
+
+  # ==========================================
+  # API HEALTH ALERTS
+  # ==========================================
+  - name: api_health_alerts
+    interval: 30s
+    rules:
+      # API caída
+      - alert: APIDown
+        expr: up{job="api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API NO RESPONDE"
+          description: "El servidor API está caído"
+
+      # Alto ratio de errores 5xx
+      - alert: APIHighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "API con {{ $value | humanizePercentage }} de errores 5xx"
+          description: "Muchos errores de servidor. Revisa logs."
+
+      # Alto tiempo de respuesta
+      - alert: APISlowResponse
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "API lenta (p95: {{ $value }}s)"
+          description: "El 95% de requests toman más de 2 segundos"
+
+  # ==========================================
+  # DISK ALERTS
+  # ==========================================
+  - name: disk_alerts
+    interval: 5m
+    rules:
+      # Disco casi lleno
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Disco {{ $labels.mountpoint }} con {{ $value | humanizePercentage }} libre"
+          description: "Queda poco espacio en disco. Limpia logs o DLQ."
+
+      # Disco críticamente lleno
+      - alert: DiskSpaceCritical
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.05
+        for: 2m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "DISCO CASI LLENO: {{ $labels.mountpoint }} ({{ $value | humanizePercentage }} libre)"
+          description: "URGENTE: Libera espacio inmediatamente"
