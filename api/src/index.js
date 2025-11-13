@@ -19,6 +19,7 @@ import notificationRoutes from './routes/notifications.js';
 import webpushRoutes from './routes/webpush.js';
 import statsRoutes from './routes/stats.js';
 import metricsRoutes from './routes/metrics.js';
+import dlqRoutes from './routes/dlq.js';
 
 // Crear app Express
 const app = express();
@@ -62,6 +63,7 @@ app.use('/api/v1', healthRoutes);
 app.use('/api/v1/notify', notificationRoutes);
 app.use('/api/v1/webpush', webpushRoutes);
 app.use('/api/v1/stats', statsRoutes);
+app.use('/api/v1/dlq', dlqRoutes); // Dead Letter Queue management
 app.use('/', metricsRoutes); // Prometheus metrics en /metrics (no /api/v1/metrics)
 
 // Root endpoint

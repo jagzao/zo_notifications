@@ -192,7 +192,40 @@ async function processNotification(job) {
   }
 }
 
-// Crear worker
+// Dead Letter Queue handler
+async function moveToDLQ(job, error) {
+  try {
+    const redis = new Redis(connection);
+    const dlqKey = 'webpush-notifications:dlq';
+
+    const dlqEntry = JSON.stringify({
+      jobId: job.id,
+      data: job.data,
+      error: error.message,
+      stack: error.stack,
+      attempts: job.attemptsMade,
+      failedAt: new Date().toISOString(),
+      originalQueue: 'webpush-notifications'
+    });
+
+    await redis.lpush(dlqKey, dlqEntry);
+    await redis.expire(dlqKey, 86400 * 7); // Mantener DLQ por 7 días
+    await redis.quit();
+
+    logger.warn('Job moved to DLQ', {
+      jobId: job.id,
+      attempts: job.attemptsMade,
+      error: error.message
+    });
+  } catch (dlqError) {
+    logger.error('Failed to move job to DLQ', {
+      jobId: job.id,
+      error: dlqError.message
+    });
+  }
+}
+
+// Crear worker con retry config y DLQ
 const worker = new Worker('webpush-notifications', processNotification, {
   connection,
   concurrency: 5,
@@ -200,6 +233,12 @@ const worker = new Worker('webpush-notifications', processNotification, {
     max: 10,
     duration: 1000,
   },
+  settings: {
+    backoffStrategy: async (attemptsMade) => {
+      // Exponential backoff: 10s, 30s, 90s, 270s
+      return Math.min(10000 * Math.pow(3, attemptsMade - 1), 300000);
+    }
+  }
 });
 
 // Event listeners
@@ -210,11 +249,20 @@ worker.on('completed', (job, result) => {
   });
 });
 
-worker.on('failed', (job, error) => {
+worker.on('failed', async (job, error) => {
+  const maxAttempts = parseInt(process.env.MAX_JOB_ATTEMPTS || '3', 10);
+
   logger.error('Job failed', {
     jobId: job?.id,
-    error: error.message
+    error: error.message,
+    attempts: job?.attemptsMade,
+    maxAttempts
   });
+
+  // Si alcanzó el máximo de intentos, mover a DLQ
+  if (job && job.attemptsMade >= maxAttempts) {
+    await moveToDLQ(job, error);
+  }
 });
 
 worker.on('error', (error) => {

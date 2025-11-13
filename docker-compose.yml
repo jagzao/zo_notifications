@@ -90,8 +90,9 @@ services:
     volumes:
       - ./workers/webpush-worker/logs:/app/logs
 
-  # Worker para Discord
+  # Worker para Discord (opcional - usar profile 'discord')
   discord-worker:
+    profiles: ["discord"]
     build:
       context: ./workers/discord-worker
       dockerfile: Dockerfile
@@ -114,8 +115,9 @@ services:
     volumes:
       - ./workers/discord-worker/logs:/app/logs
 
-  # Worker para Slack (opcional, comentar si no se usa)
+  # Worker para Slack (opcional - usar profile 'slack')
   slack-worker:
+    profiles: ["slack"]
     build:
       context: ./workers/slack-worker
       dockerfile: Dockerfile
@@ -138,8 +140,9 @@ services:
     volumes:
       - ./workers/slack-worker/logs:/app/logs
 
-  # Worker para Email (opcional, comentar si no se usa)
+  # Worker para Email (opcional - usar profile 'email')
   email-worker:
+    profiles: ["email"]
     build:
       context: ./workers/email-worker
       dockerfile: Dockerfile

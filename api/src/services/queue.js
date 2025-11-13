@@ -239,6 +239,149 @@ class QueueService {
     }
   }
 
+  // Dead Letter Queue - Obtener jobs fallidos
+  async getDLQ(channel = 'all', limit = 50) {
+    try {
+      const { Redis } = await import('ioredis');
+      const redis = new Redis(this.connection);
+
+      const queues = channel === 'all'
+        ? ['webpush-notifications', 'discord-notifications', 'slack-notifications', 'email-notifications']
+        : [`${channel}-notifications`];
+
+      const dlqJobs = [];
+
+      for (const queueName of queues) {
+        const dlqKey = `${queueName}:dlq`;
+        const jobs = await redis.lrange(dlqKey, 0, limit - 1);
+
+        dlqJobs.push(...jobs.map(job => ({
+          ...JSON.parse(job),
+          channel: queueName.replace('-notifications', '')
+        })));
+      }
+
+      await redis.quit();
+
+      return dlqJobs.sort((a, b) => new Date(b.failedAt) - new Date(a.failedAt));
+    } catch (error) {
+      logger.error('Error fetching DLQ', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Dead Letter Queue - Obtener conteo de jobs fallidos
+  async getDLQCount(channel = 'all') {
+    try {
+      const { Redis } = await import('ioredis');
+      const redis = new Redis(this.connection);
+
+      const queues = channel === 'all'
+        ? ['webpush-notifications', 'discord-notifications', 'slack-notifications', 'email-notifications']
+        : [`${channel}-notifications`];
+
+      let totalCount = 0;
+      const counts = {};
+
+      for (const queueName of queues) {
+        const dlqKey = `${queueName}:dlq`;
+        const count = await redis.llen(dlqKey);
+        const channelName = queueName.replace('-notifications', '');
+        counts[channelName] = count;
+        totalCount += count;
+      }
+
+      await redis.quit();
+
+      return { total: totalCount, byChannel: counts };
+    } catch (error) {
+      logger.error('Error fetching DLQ count', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Dead Letter Queue - Reintenta un job específico desde DLQ
+  async retryFromDLQ(jobId, channel) {
+    try {
+      const { Redis } = await import('ioredis');
+      const redis = new Redis(this.connection);
+
+      const dlqKey = `${channel}-notifications:dlq`;
+      const jobs = await redis.lrange(dlqKey, 0, -1);
+
+      for (let i = 0; i < jobs.length; i++) {
+        const job = JSON.parse(jobs[i]);
+        if (job.jobId === jobId) {
+          // Remover del DLQ
+          await redis.lrem(dlqKey, 1, jobs[i]);
+
+          // Re-añadir a la queue correspondiente
+          let addedJob;
+          switch (channel) {
+            case 'webpush':
+              addedJob = await this.addWebPushJob(job.data);
+              break;
+            case 'discord':
+              addedJob = await this.addDiscordJob(job.data);
+              break;
+            case 'slack':
+              addedJob = await this.addSlackJob(job.data);
+              break;
+            case 'email':
+              addedJob = await this.addEmailJob(job.data);
+              break;
+          }
+
+          await redis.quit();
+
+          logger.info('Job retried from DLQ', {
+            originalJobId: jobId,
+            newJobId: addedJob.id,
+            channel
+          });
+
+          return addedJob;
+        }
+      }
+
+      await redis.quit();
+      throw new Error('Job not found in DLQ');
+    } catch (error) {
+      logger.error('Error retrying job from DLQ', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Dead Letter Queue - Limpiar DLQ de un canal
+  async clearDLQ(channel = 'all') {
+    try {
+      const { Redis } = await import('ioredis');
+      const redis = new Redis(this.connection);
+
+      const queues = channel === 'all'
+        ? ['webpush-notifications', 'discord-notifications', 'slack-notifications', 'email-notifications']
+        : [`${channel}-notifications`];
+
+      let deletedCount = 0;
+
+      for (const queueName of queues) {
+        const dlqKey = `${queueName}:dlq`;
+        const count = await redis.llen(dlqKey);
+        await redis.del(dlqKey);
+        deletedCount += count;
+      }
+
+      await redis.quit();
+
+      logger.info('DLQ cleared', { channel, deletedCount });
+
+      return { deletedCount };
+    } catch (error) {
+      logger.error('Error clearing DLQ', { error: error.message });
+      throw error;
+    }
+  }
+
   // Cerrar queues
   async close() {
     await this.webPushQueue.close();

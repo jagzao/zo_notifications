@@ -22,12 +22,20 @@ Sistema de notificaciones **100% web** self-hosted en Docker para recibir evento
 - 💾 **Persistencia** - PostgreSQL con backups automáticos
 - 🔧 **Backups** - Scripts de backup/restore encriptados
 
-### Observability Stack (NEW!)
+### Observability Stack
 - 📊 **Prometheus** - Recolección de métricas en tiempo real
 - 📈 **Grafana** - Dashboards y visualización de datos
 - 📝 **Loki + Promtail** - Agregación de logs centralizada
 - ⏱️ **Uptime Kuma** - Monitoring de disponibilidad
 - 🔍 **Exporters** - PostgreSQL, Redis y Node metrics
+
+### Advanced Features (NEW!)
+- 🎯 **Workers Condicionales** - Solo inicia los workers que necesitas (ahorro de recursos)
+- ⚡ **Rate Limiting por Proyecto** - Límites diferenciados por tier (free, basic, pro, unlimited)
+- 🔄 **Dead Letter Queue** - Captura y gestión de notificaciones fallidas con retry manual
+- 📊 **Health Checks** - Endpoints de salud para todos los workers (Prometheus-ready)
+- 🔧 **Script de Validación** - Pre-deployment checks automáticos
+- 📝 **Log Rotation** - Rotación automática de logs (evita disco lleno)
 
 ## 🏗️ Arquitectura
 
@@ -430,6 +438,8 @@ docker-compose build
 - **[PLAN_WEB.md](PLAN_WEB.md)** - Arquitectura y decisiones técnicas
 - **[EXAMPLES.md](EXAMPLES.md)** - Ejemplos de integración (Bash, Python, Node, PHP, Go)
 - **[CHANGELOG.md](CHANGELOG.md)** - Historial de cambios
+- **[docs/ADVANCED_FEATURES.md](docs/ADVANCED_FEATURES.md)** - 🆕 Workers condicionales, Rate limiting, DLQ
+- **[docs/LOG_ROTATION.md](docs/LOG_ROTATION.md)** - Gestión y rotación de logs
 - **[docs/MONITORING.md](docs/MONITORING.md)** - Guía completa del stack de observabilidad
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas comunes
 - **[docs/SECURITY.md](docs/SECURITY.md)** - Best practices de seguridad

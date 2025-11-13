@@ -1,127 +1,132 @@
 #!/bin/bash
 
-# Script de inicio rápido para ZO Notifications
-# ============================================
+# Script para iniciar ZO Notifications con workers condicionales
+# Detecta automáticamente qué workers están configurados y solo levanta esos
 
 set -e
 
-echo "🚀 Iniciando ZO Notifications..."
-echo ""
-
-# Colores
+# Colores para output
 GREEN='\033[0;32m'
+BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Verificar Docker
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}❌ Docker no está instalado${NC}"
-    echo "Por favor instala Docker: https://docs.docker.com/get-docker/"
-    exit 1
-fi
+echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║   ZO Notifications - Smart Startup    ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+echo ""
 
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}❌ Docker Compose no está instalado${NC}"
-    echo "Por favor instala Docker Compose: https://docs.docker.com/compose/install/"
-    exit 1
-fi
-
-echo -e "${GREEN}✅ Docker encontrado${NC}"
-
-# Verificar archivo .env
+# Cargar variables de entorno
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}⚠️  Archivo .env no encontrado${NC}"
-    echo "Copiando .env.example a .env..."
-    cp .env.example .env
-    echo -e "${YELLOW}⚠️  Por favor edita el archivo .env con tus configuraciones${NC}"
-    echo ""
-    echo "Debes configurar:"
-    echo "  - WEB_PUSH_PUBLIC_KEY y WEB_PUSH_PRIVATE_KEY (generar con: web-push generate-vapid-keys)"
-    echo "  - DISCORD_WEBHOOK_URL"
-    echo "  - API_KEY_SECRET"
-    echo "  - REDIS_PASSWORD"
-    echo "  - POSTGRES_PASSWORD"
-    echo ""
-    read -p "¿Ya configuraste el archivo .env? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Por favor configura .env y vuelve a ejecutar este script"
-        exit 1
-    fi
+  echo -e "${RED}❌ ERROR: .env file not found!${NC}"
+  echo "Run: cp .env.example .env"
+  exit 1
 fi
 
-echo -e "${GREEN}✅ Archivo .env encontrado${NC}"
+source .env
 
-# Verificar Web Push keys
-if ! grep -q "WEB_PUSH_PUBLIC_KEY=BC" .env; then
-    echo -e "${YELLOW}⚠️  Web Push keys no configuradas${NC}"
-    echo ""
-    echo "Para generar las keys:"
-    echo "  npm install -g web-push"
-    echo "  web-push generate-vapid-keys"
-    echo ""
-    read -p "¿Quieres continuar sin Web Push? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
-    fi
+# Detectar compose file (dev o prod)
+COMPOSE_FILE="docker-compose.yml"
+if [ "$1" = "prod" ] || [ "$1" = "production" ]; then
+  COMPOSE_FILE="docker-compose.prod.yml"
+  echo -e "${BLUE}📦 Modo: PRODUCCIÓN${NC}"
+else
+  echo -e "${BLUE}📦 Modo: DESARROLLO${NC}"
 fi
 
-# Construir e iniciar servicios
-echo ""
-echo "📦 Construyendo imágenes Docker..."
-docker-compose build
+# Array para profiles activos
+PROFILES=()
 
-echo ""
-echo "🏃 Iniciando servicios..."
-docker-compose up -d
+# Verificar configuración de cada worker
+echo -e "\n${BLUE}Detectando workers configurados...${NC}\n"
 
-# Esperar a que los servicios estén listos
-echo ""
-echo "⏳ Esperando a que los servicios estén listos..."
-sleep 5
+# WebPush (siempre activo - es el core del sistema)
+echo -e "${GREEN}✅ WebPush Worker${NC} - Siempre activo (core)"
 
-# Verificar estado
-echo ""
-echo "📊 Estado de los servicios:"
-docker-compose ps
+# Discord
+if [ ! -z "$DISCORD_WEBHOOK_URL" ] && [ "$DISCORD_WEBHOOK_URL" != "your_discord_webhook_url" ]; then
+  echo -e "${GREEN}✅ Discord Worker${NC} - Configurado"
+  PROFILES+=("discord")
+else
+  echo -e "${YELLOW}⏭️  Discord Worker${NC} - No configurado (saltando)"
+fi
 
-# Verificar health del API
+# Slack
+if [ ! -z "$SLACK_WEBHOOK_URL" ] && [ "$SLACK_WEBHOOK_URL" != "your_slack_webhook_url" ]; then
+  echo -e "${GREEN}✅ Slack Worker${NC} - Configurado"
+  PROFILES+=("slack")
+else
+  echo -e "${YELLOW}⏭️  Slack Worker${NC} - No configurado (saltando)"
+fi
+
+# Email
+if [ ! -z "$EMAIL_USER" ] && [ "$EMAIL_USER" != "your_email@gmail.com" ]; then
+  echo -e "${GREEN}✅ Email Worker${NC} - Configurado"
+  PROFILES+=("email")
+else
+  echo -e "${YELLOW}⏭️  Email Worker${NC} - No configurado (saltando)"
+fi
+
+# Construir comando docker-compose
+CMD="docker-compose -f $COMPOSE_FILE"
+
+# Añadir profiles si hay
+if [ ${#PROFILES[@]} -gt 0 ]; then
+  PROFILE_STR=$(IFS=,; echo "${PROFILES[*]}")
+  CMD="COMPOSE_PROFILES=$PROFILE_STR $CMD"
+  echo -e "\n${BLUE}🎯 Profiles activos: ${PROFILE_STR}${NC}"
+else
+  echo -e "\n${BLUE}🎯 Solo workers core (WebPush)${NC}"
+fi
+
+# Preguntar acción
+echo -e "\n${BLUE}¿Qué quieres hacer?${NC}"
+echo "1) up    - Iniciar en background"
+echo "2) logs  - Ver logs en tiempo real"
+echo "3) down  - Detener todo"
+echo "4) build - Rebuild images"
+echo "5) ps    - Ver estado de contenedores"
 echo ""
-echo "🏥 Verificando health del API..."
-for i in {1..10}; do
-    if curl -s http://localhost:3000/api/v1/health > /dev/null 2>&1; then
-        echo -e "${GREEN}✅ API está respondiendo${NC}"
-        break
-    else
-        if [ $i -eq 10 ]; then
-            echo -e "${RED}❌ API no responde después de 10 intentos${NC}"
-            echo "Ver logs: docker-compose logs api"
-            exit 1
-        fi
-        echo "Intento $i/10..."
-        sleep 2
+read -p "Opción [1]: " ACTION
+ACTION=${ACTION:-1}
+
+case $ACTION in
+  1|up)
+    echo -e "\n${GREEN}🚀 Iniciando servicios...${NC}"
+    eval "$CMD up -d"
+    echo -e "\n${GREEN}✅ Servicios iniciados!${NC}"
+    echo -e "\n${BLUE}Servicios disponibles:${NC}"
+    echo "  - API:      http://localhost:3000"
+    echo "  - Frontend: http://localhost:5173"
+    if [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
+      echo "  - Grafana:  http://localhost:3001 (admin/admin)"
+      echo "  - Prometheus: http://localhost:9090"
+      echo "  - Uptime Kuma: http://localhost:3002"
     fi
-done
-
-# Mostrar información
-echo ""
-echo -e "${GREEN}✨ ¡ZO Notifications está corriendo!${NC}"
-echo ""
-echo "📍 URLs disponibles:"
-echo "   - Dashboard:  http://localhost:5173"
-echo "   - API:        http://localhost:3000"
-echo "   - Health:     http://localhost:3000/api/v1/health"
-echo ""
-echo "📝 Comandos útiles:"
-echo "   - Ver logs:        docker-compose logs -f"
-echo "   - Detener:         docker-compose down"
-echo "   - Reiniciar:       docker-compose restart"
-echo ""
-echo "📚 Documentación:"
-echo "   - DEPLOYMENT.md - Guía de despliegue completa"
-echo "   - EXAMPLES.md   - Ejemplos de uso"
-echo "   - docs/API.md   - Documentación de API"
-echo ""
-echo -e "${YELLOW}💡 Tip: Abre http://localhost:5173 y activa las notificaciones del navegador${NC}"
+    echo ""
+    echo "Ver logs: ./scripts/start.sh logs"
+    ;;
+  2|logs)
+    echo -e "\n${GREEN}📋 Mostrando logs...${NC}"
+    eval "$CMD logs -f"
+    ;;
+  3|down)
+    echo -e "\n${YELLOW}🛑 Deteniendo servicios...${NC}"
+    eval "$CMD down"
+    echo -e "${GREEN}✅ Servicios detenidos${NC}"
+    ;;
+  4|build)
+    echo -e "\n${BLUE}🔨 Rebuilding images...${NC}"
+    eval "$CMD build"
+    echo -e "${GREEN}✅ Build completado${NC}"
+    ;;
+  5|ps)
+    echo -e "\n${BLUE}📊 Estado de contenedores:${NC}\n"
+    eval "$CMD ps"
+    ;;
+  *)
+    echo -e "${RED}❌ Opción inválida${NC}"
+    exit 1
+    ;;
+esac
