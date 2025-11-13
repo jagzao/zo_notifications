@@ -7,10 +7,11 @@ import config from './config/index.js';
 import logger from './services/logger.js';
 import database from './services/database.js';
 import redis from './services/redis.js';
+import queue from './services/queue.js';
 import { rateLimitByIP } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { metricsMiddleware } from './middleware/metrics.js';
-import { websocketConnections, websocketMessagesTotal } from './services/metrics.js';
+import { websocketConnections, websocketMessagesTotal, updateQueueMetrics } from './services/metrics.js';
 
 // Routes
 import healthRoutes from './routes/health.js';
@@ -135,6 +136,23 @@ async function initialize() {
     // Suscribirse a notificaciones
     await subscribeToNotifications();
 
+    // Actualizar métricas de queue periódicamente (cada 15 segundos)
+    const updateMetricsInterval = setInterval(async () => {
+      try {
+        await updateQueueMetrics({
+          webpush: queue.webPushQueue,
+          discord: queue.discordQueue,
+          slack: queue.slackQueue,
+          email: queue.emailQueue
+        });
+      } catch (error) {
+        logger.error('Error updating queue metrics', { error: error.message });
+      }
+    }, 15000);
+
+    // Guardar intervalo para limpiar en shutdown
+    global.metricsInterval = updateMetricsInterval;
+
     // Iniciar servidor
     httpServer.listen(config.port, () => {
       logger.info(`Server started on port ${config.port}`, {
@@ -156,12 +174,18 @@ async function shutdown(signal) {
   logger.info(`${signal} received, shutting down gracefully`);
 
   try {
+    // Detener intervalo de métricas
+    if (global.metricsInterval) {
+      clearInterval(global.metricsInterval);
+    }
+
     // Cerrar servidor HTTP
     httpServer.close(() => {
       logger.info('HTTP server closed');
     });
 
     // Cerrar conexiones
+    await queue.close();
     await database.close();
     await redis.disconnect();
 

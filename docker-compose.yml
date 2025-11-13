@@ -114,6 +114,57 @@ services:
     volumes:
       - ./workers/discord-worker/logs:/app/logs
 
+  # Worker para Slack (opcional, comentar si no se usa)
+  slack-worker:
+    build:
+      context: ./workers/slack-worker
+      dockerfile: Dockerfile
+    container_name: zo_slack_worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - SLACK_CHANNEL=${SLACK_CHANNEL}
+      - SLACK_USERNAME=${SLACK_USERNAME:-ZO Notifications}
+      - SLACK_ICON_EMOJI=${SLACK_ICON_EMOJI:-:bell:}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      - redis
+    networks:
+      - zo_network
+    volumes:
+      - ./workers/slack-worker/logs:/app/logs
+
+  # Worker para Email (opcional, comentar si no se usa)
+  email-worker:
+    build:
+      context: ./workers/email-worker
+      dockerfile: Dockerfile
+    container_name: zo_email_worker
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - EMAIL_HOST=${EMAIL_HOST:-smtp.gmail.com}
+      - EMAIL_PORT=${EMAIL_PORT:-587}
+      - EMAIL_SECURE=${EMAIL_SECURE:-false}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - EMAIL_FROM=${EMAIL_FROM}
+      - EMAIL_TO=${EMAIL_TO}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      - redis
+    networks:
+      - zo_network
+    volumes:
+      - ./workers/email-worker/logs:/app/logs
+
   # Redis - Queue System
   redis:
     image: redis:7-alpine

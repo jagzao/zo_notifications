@@ -112,7 +112,25 @@ router.post('/error', validate(errorNotificationSchema), async (req, res) => {
       priority: notification.error.severity === 'critical' ? 10 : 5
     });
 
-    // También notificar a través de Web Push si es crítico
+    // Añadir a queue de Slack (todos los errores)
+    await queue.addSlackJob({
+      notificationId: saved.id,
+      ...notification,
+    }, {
+      priority: notification.error.severity === 'critical' ? 10 : 5
+    });
+
+    // Añadir a queue de Email (solo errores críticos)
+    if (notification.error.severity === 'critical') {
+      await queue.addEmailJob({
+        notificationId: saved.id,
+        ...notification,
+      }, {
+        priority: 10
+      });
+    }
+
+    // También notificar a través de Web Push si es crítico o high
     if (notification.error.severity === 'critical' || notification.error.severity === 'high') {
       await queue.addWebPushJob({
         notificationId: saved.id,
@@ -143,6 +161,8 @@ router.post('/error', validate(errorNotificationSchema), async (req, res) => {
       notification_id: saved.id,
       status: 'queued',
       discord_sent: true,
+      slack_sent: true,
+      email_sent: notification.error.severity === 'critical',
       push_sent: notification.error.severity === 'critical' || notification.error.severity === 'high'
     });
   } catch (error) {
@@ -171,13 +191,18 @@ router.post('/warning', validate(warningNotificationSchema), async (req, res) =>
     // Guardar en DB
     const saved = await saveNotification('warning', notification, req.apiKey);
 
-    // Enviar tanto a Web Push como a Discord
+    // Enviar a Web Push, Discord y Slack
     await queue.addWebPushJob({
       notificationId: saved.id,
       ...notification,
     });
 
     await queue.addDiscordJob({
+      notificationId: saved.id,
+      ...notification,
+    });
+
+    await queue.addSlackJob({
       notificationId: saved.id,
       ...notification,
     });

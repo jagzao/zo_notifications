@@ -50,6 +50,46 @@ class QueueService {
       },
     });
 
+    // Queue para Slack notifications
+    this.slackQueue = new Queue('slack-notifications', {
+      connection: this.connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: {
+          count: 1000,
+          age: 24 * 3600,
+        },
+        removeOnFail: {
+          count: 5000,
+          age: 7 * 24 * 3600,
+        },
+      },
+    });
+
+    // Queue para Email notifications
+    this.emailQueue = new Queue('email-notifications', {
+      connection: this.connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: {
+          count: 1000,
+          age: 24 * 3600,
+        },
+        removeOnFail: {
+          count: 5000,
+          age: 7 * 24 * 3600,
+        },
+      },
+    });
+
     this.setupEventListeners();
   }
 
@@ -73,6 +113,30 @@ class QueueService {
 
     this.discordQueue.on('failed', (job, err) => {
       logger.error('Discord job failed', {
+        jobId: job?.id,
+        error: err.message
+      });
+    });
+
+    // Slack Queue events
+    this.slackQueue.on('completed', (job) => {
+      logger.info('Slack job completed', { jobId: job.id });
+    });
+
+    this.slackQueue.on('failed', (job, err) => {
+      logger.error('Slack job failed', {
+        jobId: job?.id,
+        error: err.message
+      });
+    });
+
+    // Email Queue events
+    this.emailQueue.on('completed', (job) => {
+      logger.info('Email job completed', { jobId: job.id });
+    });
+
+    this.emailQueue.on('failed', (job, err) => {
+      logger.error('Email job failed', {
         jobId: job?.id,
         error: err.message
       });
@@ -111,14 +175,50 @@ class QueueService {
     }
   }
 
+  // Añadir notificación a Slack queue
+  async addSlackJob(data, options = {}) {
+    try {
+      const job = await this.slackQueue.add('send-slack', data, {
+        priority: options.priority || 1,
+        delay: options.delay || 0,
+      });
+
+      logger.info('Slack job added', { jobId: job.id, data });
+      return job;
+    } catch (error) {
+      logger.error('Error adding Slack job', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Añadir notificación a Email queue
+  async addEmailJob(data, options = {}) {
+    try {
+      const job = await this.emailQueue.add('send-email', data, {
+        priority: options.priority || 1,
+        delay: options.delay || 0,
+      });
+
+      logger.info('Email job added', { jobId: job.id, data });
+      return job;
+    } catch (error) {
+      logger.error('Error adding Email job', { error: error.message });
+      throw error;
+    }
+  }
+
   // Obtener estadísticas de las queues
   async getStats() {
     const webPushCounts = await this.webPushQueue.getJobCounts();
     const discordCounts = await this.discordQueue.getJobCounts();
+    const slackCounts = await this.slackQueue.getJobCounts();
+    const emailCounts = await this.emailQueue.getJobCounts();
 
     return {
       webPush: webPushCounts,
       discord: discordCounts,
+      slack: slackCounts,
+      email: emailCounts,
     };
   }
 
@@ -126,7 +226,8 @@ class QueueService {
   async healthCheck() {
     try {
       const stats = await this.getStats();
-      const queueDepth = stats.webPush.waiting + stats.discord.waiting;
+      const queueDepth = stats.webPush.waiting + stats.discord.waiting +
+                         stats.slack.waiting + stats.email.waiting;
 
       return {
         status: queueDepth < 1000 ? 'ok' : 'degraded',
@@ -142,6 +243,8 @@ class QueueService {
   async close() {
     await this.webPushQueue.close();
     await this.discordQueue.close();
+    await this.slackQueue.close();
+    await this.emailQueue.close();
     logger.info('Queues closed');
   }
 }
