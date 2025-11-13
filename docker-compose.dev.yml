@@ -1,0 +1,162 @@
+version: '3.8'
+
+# Docker Compose para DESARROLLO
+# Incluye hot reload, volúmenes montados, y configuraciones optimizadas para dev
+
+services:
+  # API REST
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: zo_notifications_api_dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - API_PORT=3000
+      - API_KEY_SECRET=${API_KEY_SECRET}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - WEB_PUSH_PUBLIC_KEY=${WEB_PUSH_PUBLIC_KEY}
+      - WEB_PUSH_PRIVATE_KEY=${WEB_PUSH_PRIVATE_KEY}
+      - WEB_PUSH_EMAIL=${WEB_PUSH_EMAIL}
+      - LOG_LEVEL=debug
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - zo_network
+    volumes:
+      - ./api/src:/app/src  # Hot reload
+      - ./api/logs:/app/logs
+    command: npm run dev  # Usar nodemon
+
+  # Frontend React
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: zo_frontend_dev
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:3000
+      - VITE_WS_URL=ws://localhost:3000
+      - VITE_WEB_PUSH_PUBLIC_KEY=${WEB_PUSH_PUBLIC_KEY}
+    depends_on:
+      - api
+    networks:
+      - zo_network
+    volumes:
+      - ./frontend/src:/app/src  # Hot reload
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+
+  # Worker para Web Push Notifications
+  webpush-worker:
+    build:
+      context: ./workers/webpush-worker
+      dockerfile: Dockerfile
+    container_name: zo_webpush_worker_dev
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - WEB_PUSH_PUBLIC_KEY=${WEB_PUSH_PUBLIC_KEY}
+      - WEB_PUSH_PRIVATE_KEY=${WEB_PUSH_PRIVATE_KEY}
+      - WEB_PUSH_EMAIL=${WEB_PUSH_EMAIL}
+      - LOG_LEVEL=debug
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - zo_network
+    volumes:
+      - ./workers/webpush-worker:/app  # Hot reload
+      - ./workers/webpush-worker/logs:/app/logs
+    command: npm run dev  # Usar nodemon
+
+  # Worker para Discord
+  discord-worker:
+    build:
+      context: ./workers/discord-worker
+      dockerfile: Dockerfile
+    container_name: zo_discord_worker_dev
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - DISCORD_USERNAME=${DISCORD_USERNAME:-ZO Notifications Dev}
+      - LOG_LEVEL=debug
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - zo_network
+    volumes:
+      - ./workers/discord-worker:/app  # Hot reload
+      - ./workers/discord-worker/logs:/app/logs
+    command: npm run dev  # Usar nodemon
+
+  # Redis - Queue System
+  redis:
+    image: redis:7-alpine
+    container_name: zo_redis_dev
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    networks:
+      - zo_network
+    volumes:
+      - redis_data_dev:/data
+
+  # PostgreSQL - Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: zo_postgres_dev
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    networks:
+      - zo_network
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+
+networks:
+  zo_network:
+    driver: bridge
+
+volumes:
+  redis_data_dev:
+  postgres_data_dev:
