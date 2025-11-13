@@ -2,6 +2,8 @@ import rateLimit from 'express-rate-limit';
 import config from '../config/index.js';
 import logger from '../services/logger.js';
 import pool from '../services/database.js';
+import apiKeyCache from '../services/apiKeyCache.js';
+import webhookNotifier from '../services/webhookNotifier.js';
 import { rateLimitExceeded } from '../services/metrics.js';
 
 // Rate limiter por IP (básico, en memoria)
@@ -43,17 +45,14 @@ export const rateLimitByAPIKey = async (req, res, next) => {
       return next(); // Dejar que auth middleware maneje esto
     }
 
-    // Obtener límites de la API key desde DB
-    const apiKeyResult = await pool.query(
-      'SELECT rate_limit_max, rate_limit_window_ms, tier, project FROM api_keys WHERE key = $1 AND active = true',
-      [apiKey]
-    );
+    // Obtener límites de la API key desde CACHE (Redis) o DB
+    const apiKeyData = await apiKeyCache.getAPIKey(apiKey);
 
-    if (apiKeyResult.rows.length === 0) {
+    if (!apiKeyData) {
       return next(); // Dejar que auth middleware maneje esto
     }
 
-    const { rate_limit_max, rate_limit_window_ms, tier, project } = apiKeyResult.rows[0];
+    const { rate_limit_max, rate_limit_window_ms, tier, project } = apiKeyData;
     const endpoint = req.path;
 
     // Verificar rate limit usando función SQL
@@ -64,11 +63,25 @@ export const rateLimitByAPIKey = async (req, res, next) => {
 
     const { allowed, current_count, limit_max, reset_at } = rateLimitResult.rows[0];
 
+    // Calcular porcentaje de uso
+    const usage_percentage = (current_count / limit_max) * 100;
+
     // Establecer headers de rate limiting
     res.setHeader('X-RateLimit-Limit', limit_max);
     res.setHeader('X-RateLimit-Remaining', Math.max(0, limit_max - current_count - 1));
     res.setHeader('X-RateLimit-Reset', new Date(reset_at).getTime() / 1000);
     res.setHeader('X-RateLimit-Tier', tier);
+
+    // Enviar advertencia si está cerca del límite (> 80%)
+    if (usage_percentage > 80 && usage_percentage <= 100) {
+      webhookNotifier.notifyNearLimit(apiKey, {
+        project,
+        tier,
+        current_count,
+        limit_max,
+        usage_percentage
+      }).catch(err => logger.error('Webhook notification error', { error: err.message }));
+    }
 
     if (!allowed) {
       logger.warn('API Key rate limit exceeded', {

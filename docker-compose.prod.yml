@@ -260,6 +260,27 @@ services:
       - zo_network
     depends_on:
       - api
+      - alertmanager
+
+  # Alertmanager - Gestión y enrutamiento de alertas
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: zo_alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/alertmanager/templates:/etc/alertmanager/templates:ro
+      - alertmanager_data:/alertmanager
+    environment:
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+    networks:
+      - zo_network
 
   # Grafana - Dashboards y visualización
   grafana:
@@ -408,3 +429,4 @@ volumes:
   grafana_data:
   loki_data:
   uptime_kuma_data:
+  alertmanager_data:

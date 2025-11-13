@@ -6,11 +6,11 @@ global:
     monitor: 'zo-notifications'
     environment: 'production'
 
-# Configuración de Alertmanager (opcional)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets: ['alertmanager:9093']
+# Configuración de Alertmanager
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
 
 # Reglas de alertas
 rule_files:

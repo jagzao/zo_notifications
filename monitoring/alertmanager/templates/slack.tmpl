@@ -1,0 +1,27 @@
+{{ define "slack.title" }}
+{{ if eq .Status "firing" }}🔥{{ else }}✅{{ end }} {{ .GroupLabels.alertname }}
+{{ end }}
+
+{{ define "slack.text" }}
+{{ range .Alerts }}
+*Alert:* {{ .Labels.alertname }}
+*Severity:* {{ .Labels.severity }}
+*Service:* {{ .Labels.service }}{{ if .Labels.component }} - {{ .Labels.component }}{{ end }}
+
+*Summary:* {{ .Annotations.summary }}
+*Description:* {{ .Annotations.description }}
+
+*Status:* {{ .Status }}
+{{ if eq .Status "firing" }}
+*Started:* {{ .StartsAt.Format "2006-01-02 15:04:05" }}
+{{ else }}
+*Resolved:* {{ .EndsAt.Format "2006-01-02 15:04:05" }}
+*Duration:* {{ .EndsAt.Sub .StartsAt }}
+{{ end }}
+
+{{ if .Labels.instance }}*Instance:* `{{ .Labels.instance }}`{{ end }}
+{{ if .Labels.job }}*Job:* `{{ .Labels.job }}`{{ end }}
+
+---
+{{ end }}
+{{ end }}
