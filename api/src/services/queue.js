@@ -1,0 +1,149 @@
+import { Queue } from 'bullmq';
+import config from '../config/index.js';
+import logger from './logger.js';
+
+class QueueService {
+  constructor() {
+    this.connection = {
+      host: config.redis.host,
+      port: config.redis.port,
+      password: config.redis.password,
+    };
+
+    // Queue para Web Push notifications
+    this.webPushQueue = new Queue('webpush-notifications', {
+      connection: this.connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: {
+          count: 1000,
+          age: 24 * 3600, // 24 horas
+        },
+        removeOnFail: {
+          count: 5000,
+          age: 7 * 24 * 3600, // 7 días
+        },
+      },
+    });
+
+    // Queue para Discord notifications
+    this.discordQueue = new Queue('discord-notifications', {
+      connection: this.connection,
+      defaultJobOptions: {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+        removeOnComplete: {
+          count: 1000,
+          age: 24 * 3600,
+        },
+        removeOnFail: {
+          count: 5000,
+          age: 7 * 24 * 3600,
+        },
+      },
+    });
+
+    this.setupEventListeners();
+  }
+
+  setupEventListeners() {
+    // Web Push Queue events
+    this.webPushQueue.on('completed', (job) => {
+      logger.info('WebPush job completed', { jobId: job.id });
+    });
+
+    this.webPushQueue.on('failed', (job, err) => {
+      logger.error('WebPush job failed', {
+        jobId: job?.id,
+        error: err.message
+      });
+    });
+
+    // Discord Queue events
+    this.discordQueue.on('completed', (job) => {
+      logger.info('Discord job completed', { jobId: job.id });
+    });
+
+    this.discordQueue.on('failed', (job, err) => {
+      logger.error('Discord job failed', {
+        jobId: job?.id,
+        error: err.message
+      });
+    });
+  }
+
+  // Añadir notificación a Web Push queue
+  async addWebPushJob(data, options = {}) {
+    try {
+      const job = await this.webPushQueue.add('send-push', data, {
+        priority: options.priority || 1,
+        delay: options.delay || 0,
+      });
+
+      logger.info('WebPush job added', { jobId: job.id, data });
+      return job;
+    } catch (error) {
+      logger.error('Error adding WebPush job', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Añadir notificación a Discord queue
+  async addDiscordJob(data, options = {}) {
+    try {
+      const job = await this.discordQueue.add('send-discord', data, {
+        priority: options.priority || 1,
+        delay: options.delay || 0,
+      });
+
+      logger.info('Discord job added', { jobId: job.id, data });
+      return job;
+    } catch (error) {
+      logger.error('Error adding Discord job', { error: error.message });
+      throw error;
+    }
+  }
+
+  // Obtener estadísticas de las queues
+  async getStats() {
+    const webPushCounts = await this.webPushQueue.getJobCounts();
+    const discordCounts = await this.discordQueue.getJobCounts();
+
+    return {
+      webPush: webPushCounts,
+      discord: discordCounts,
+    };
+  }
+
+  // Health check
+  async healthCheck() {
+    try {
+      const stats = await this.getStats();
+      const queueDepth = stats.webPush.waiting + stats.discord.waiting;
+
+      return {
+        status: queueDepth < 1000 ? 'ok' : 'degraded',
+        queueDepth,
+        stats
+      };
+    } catch (error) {
+      return { status: 'error', message: error.message };
+    }
+  }
+
+  // Cerrar queues
+  async close() {
+    await this.webPushQueue.close();
+    await this.discordQueue.close();
+    logger.info('Queues closed');
+  }
+}
+
+export default new QueueService();
