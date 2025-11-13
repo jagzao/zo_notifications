@@ -4,6 +4,7 @@ import pg from 'pg';
 import axios from 'axios';
 import winston from 'winston';
 import dotenv from 'dotenv';
+import express from 'express';
 
 dotenv.config();
 
@@ -301,8 +302,65 @@ async function shutdown(signal) {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
+// Health check server
+const healthApp = express();
+const healthPort = process.env.HEALTH_PORT || 3002;
+
+healthApp.get('/health', async (req, res) => {
+  try {
+    // Check Redis connection
+    const redis = new Redis(connection);
+    await redis.ping();
+    await redis.quit();
+
+    // Check PostgreSQL connection
+    await pool.query('SELECT 1');
+
+    res.json({
+      status: 'healthy',
+      worker: 'discord',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      checks: {
+        redis: 'ok',
+        postgres: 'ok',
+        worker: 'ok',
+        webhook: !!DISCORD_WEBHOOK_URL
+      }
+    });
+  } catch (error) {
+    logger.error('Health check failed', { error: error.message });
+    res.status(503).json({
+      status: 'unhealthy',
+      worker: 'discord',
+      error: error.message
+    });
+  }
+});
+
+healthApp.get('/metrics', (req, res) => {
+  res.json({
+    worker: 'discord',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    cpu: process.cpuUsage()
+  });
+});
+
+const healthServer = healthApp.listen(healthPort, () => {
+  logger.info(`Health server listening on port ${healthPort}`);
+});
+
+// Close health server on shutdown
+const originalShutdown = shutdown;
+shutdown = async function(signal) {
+  healthServer.close();
+  await originalShutdown(signal);
+};
+
 logger.info('Discord Worker started', {
   concurrency: 3,
   redis: `${connection.host}:${connection.port}`,
-  webhookConfigured: !!DISCORD_WEBHOOK_URL
+  webhookConfigured: !!DISCORD_WEBHOOK_URL,
+  healthPort
 });

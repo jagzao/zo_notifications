@@ -43,13 +43,33 @@ scrape_configs:
           component: 'worker'
     scrape_interval: 15s
 
-  # Discord Worker metrics (si agregamos endpoint)
+  # Discord Worker metrics
   - job_name: 'discord-worker'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['discord-worker:3002']
         labels:
           service: 'discord-worker'
+          component: 'worker'
+    scrape_interval: 15s
+
+  # Slack Worker metrics
+  - job_name: 'slack-worker'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['slack-worker:3003']
+        labels:
+          service: 'slack-worker'
+          component: 'worker'
+    scrape_interval: 15s
+
+  # Email Worker metrics
+  - job_name: 'email-worker'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['email-worker:3004']
+        labels:
+          service: 'email-worker'
           component: 'worker'
     scrape_interval: 15s
 

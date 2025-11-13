@@ -1,0 +1,7 @@
+# Logging configuration para todos los servicios
+# Configuración estándar de log rotation
+logging:
+  driver: "json-file"
+  options:
+    max-size: "10m"  # Máximo 10MB por archivo
+    max-file: "3"    # Mantener 3 archivos (30MB total por servicio)
