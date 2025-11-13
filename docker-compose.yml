@@ -26,6 +26,9 @@ services:
       - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-60000}
       - MAX_REQUEST_SIZE=${MAX_REQUEST_SIZE:-10mb}
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      - WEB_PUSH_PUBLIC_KEY=${WEB_PUSH_PUBLIC_KEY}
+      - WEB_PUSH_PRIVATE_KEY=${WEB_PUSH_PRIVATE_KEY}
+      - WEB_PUSH_EMAIL=${WEB_PUSH_EMAIL}
     depends_on:
       - redis
       - postgres
@@ -39,21 +42,41 @@ services:
       timeout: 10s
       retries: 3
 
-  # Worker para Push Notifications
-  push-worker:
+  # Frontend - React Dashboard
+  frontend:
     build:
-      context: ./workers/push-worker
+      context: ./frontend
       dockerfile: Dockerfile
-    container_name: zo_push_worker
+    container_name: zo_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
+      - VITE_WS_URL=${VITE_WS_URL:-ws://localhost:3000}
+      - VITE_WEB_PUSH_PUBLIC_KEY=${WEB_PUSH_PUBLIC_KEY}
+    depends_on:
+      - api
+    networks:
+      - zo_network
+    volumes:
+      - ./frontend/src:/app/src  # Hot reload en desarrollo
+
+  # Worker para Web Push Notifications
+  webpush-worker:
+    build:
+      context: ./workers/webpush-worker
+      dockerfile: Dockerfile
+    container_name: zo_webpush_worker
     restart: unless-stopped
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - NTFY_SERVER=${NTFY_SERVER}
-      - NTFY_TOPIC=${NTFY_TOPIC}
-      - FCM_SERVER_KEY=${FCM_SERVER_KEY}
+      - WEB_PUSH_PUBLIC_KEY=${WEB_PUSH_PUBLIC_KEY}
+      - WEB_PUSH_PRIVATE_KEY=${WEB_PUSH_PRIVATE_KEY}
+      - WEB_PUSH_EMAIL=${WEB_PUSH_EMAIL}
       - MAX_PUSH_PER_HOUR=${MAX_PUSH_PER_HOUR:-10}
       - QUIET_HOURS_START=${QUIET_HOURS_START:-22}
       - QUIET_HOURS_END=${QUIET_HOURS_END:-7}
@@ -61,10 +84,11 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       - redis
+      - postgres
     networks:
       - zo_network
     volumes:
-      - ./workers/push-worker/logs:/app/logs
+      - ./workers/webpush-worker/logs:/app/logs
 
   # Worker para Discord
   discord-worker:

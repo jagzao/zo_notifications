@@ -1,86 +1,121 @@
 # ZO Notifications System 🔔
 
-Sistema de notificaciones self-hosted en Docker para recibir eventos de otros proyectos y notificar a través de push notifications y Discord.
+Sistema de notificaciones **100% web** self-hosted en Docker para recibir eventos de otros proyectos y notificar en tiempo real.
 
 ## 🎯 Características
 
-- ✅ **Push Notifications** al celular para mensajes de éxito
-- ❌ **Discord Webhooks** para errores con detalles completos
+- 🌐 **100% Web** - Sin apps nativas, solo navegador
+- 🔔 **Web Push Notifications** - Notificaciones del navegador (incluso cerrado)
+- ⚡ **Real-time Dashboard** - WebSockets para updates instantáneos
+- ❌ **Discord Integration** - Errores detallados en Discord
+- 📱 **PWA** - Instalable como app (opcional)
 - 🐳 **Docker Compose** - Deploy con un comando
 - 🔐 **Seguro** - API Keys, rate limiting, SSL/TLS
-- 📊 **Monitoreo** - Logs, métricas y health checks
-- 🚀 **Escalable** - Queue system con Redis
-- 💾 **Persistente** - PostgreSQL para historial
+- 💾 **Persistente** - PostgreSQL para historial completo
+- 💰 **Costo 0** - Todo self-hosted
+
+## 🏗️ Arquitectura
+
+```
+┌──────────────┐
+│   Proyectos  │ ──POST──┐
+└──────────────┘         │
+                         ▼
+                  ┌─────────────┐
+                  │  API REST   │
+                  └──────┬──────┘
+                         │
+                    ┌────┴────┐
+                    │  Redis  │
+                    └────┬────┘
+                         │
+              ┏━━━━━━━━━━┻━━━━━━━━━━┓
+              ▼                     ▼
+        ┌──────────┐         ┌──────────┐
+        │ Web Push │         │ Discord  │
+        │  Worker  │         │  Worker  │
+        └────┬─────┘         └────┬─────┘
+             │                    │
+             ▼                    ▼
+    ┌─────────────┐      ┌──────────────┐
+    │  Navegador  │      │   Discord    │
+    │  (Usuario)  │◄─────┤  Dashboard   │
+    └─────────────┘ WS   └──────────────┘
+          │
+          │ WebSocket + HTTP
+          ▼
+    ┌─────────────┐
+    │   Frontend  │
+    │    React    │
+    └─────────────┘
+```
 
 ## 🚀 Quick Start
 
 ### Prerrequisitos
 
 - Docker y Docker Compose instalados
-- Puertos 80, 443, 3000 disponibles
+- Puertos 3000, 5173, 80, 443 disponibles
+- HTTPS en producción (Let's Encrypt gratis)
 
 ### Instalación
 
 ```bash
-# 1. Clonar y configurar
+# 1. Clonar repositorio
 git clone <repo-url>
 cd zo_notifications
 
-# 2. Copiar variables de entorno
+# 2. Configurar variables de entorno
 cp .env.example .env
+nano .env  # Editar con tus valores
 
-# 3. Editar .env con tus credenciales
-nano .env
+# 3. Generar keys para Web Push
+npm install -g web-push
+web-push generate-vapid-keys
+# Copiar las keys al .env
 
-# 4. Levantar servicios
+# 4. Configurar Discord Webhook
+# Discord → Server Settings → Integrations → Webhooks
+# Copiar URL al .env
+
+# 5. Levantar servicios
 docker-compose up -d
 
-# 5. Verificar estado
-curl http://localhost:3000/api/v1/health
+# 6. Abrir dashboard
+open http://localhost:5173
 ```
 
-## 📖 Documentación
+## 🌐 Interfaces
 
-- [Plan de Desarrollo](./PLAN_DESARROLLO.md) - Arquitectura completa y roadmap
-- [API Documentation](./docs/API.md) - Endpoints y ejemplos
-- [Deployment Guide](./docs/DEPLOYMENT.md) - Guía de despliegue
+### Dashboard Principal
+- 📋 Lista de notificaciones en tiempo real
+- 🔍 Filtros por tipo, proyecto, fecha
+- 🔔 Badge con conteo de no leídas
+- ⚡ Updates instantáneos vía WebSocket
 
-## 🔧 Configuración Rápida
+### Vista de Detalles
+- 🐛 Stack traces formateados
+- 📝 Context completo del error
+- 🏷️ Metadata y tags
+- ✅ Marcar como leído/resuelto
 
-### 1. Discord Webhook
+### Configuración
+- 🔔 Activar/desactivar Web Push
+- 🔕 Horarios de silencio
+- 🎵 Configurar sonidos
+- 🔑 Gestionar API keys
 
-1. Ve a tu servidor de Discord
-2. Server Settings → Integrations → Webhooks
-3. Create Webhook
-4. Copia la URL y añádela a `.env`:
-   ```
-   DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-   ```
-
-### 2. Push Notifications (Ntfy.sh)
-
-**Opción A: Usar servidor público**
-```bash
-# En .env
-NTFY_SERVER=https://ntfy.sh
-NTFY_TOPIC=tu-nombre-unico-secreto
-```
-
-**Opción B: Self-hosted**
-```bash
-# Incluido en docker-compose.yml
-NTFY_SERVER=http://ntfy:80
-NTFY_TOPIC=notifications
-```
-
-**En tu celular:**
-1. Instala Ntfy desde [Play Store](https://play.google.com/store/apps/details?id=io.heckel.ntfy) o [App Store](https://apps.apple.com/app/ntfy/id1625396347)
-2. Suscríbete al topic configurado
+### Estadísticas
+- 📊 Gráficos de notificaciones
+- 📈 Métricas por proyecto
+- 📉 Tasas de éxito/error
+- 📅 Historial completo
 
 ## 📱 Uso
 
-### Enviar notificación de éxito
+### Desde tu Código
 
+**cURL:**
 ```bash
 curl -X POST http://localhost:3000/api/v1/notify/success \
   -H "Content-Type: application/json" \
@@ -88,56 +123,126 @@ curl -X POST http://localhost:3000/api/v1/notify/success \
   -d '{
     "project": "mi-app",
     "title": "Deploy exitoso",
-    "message": "La aplicación se desplegó correctamente"
+    "message": "Versión 1.2.3 desplegada"
   }'
 ```
 
-### Enviar notificación de error
+**Python:**
+```python
+import requests
 
-```bash
-curl -X POST http://localhost:3000/api/v1/notify/error \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: tu-api-key" \
-  -d '{
-    "project": "mi-api",
-    "title": "Error en producción",
-    "error": {
-      "message": "Database connection timeout",
-      "stack": "Error: Connection timeout...",
-      "severity": "high"
+requests.post('http://localhost:3000/api/v1/notify/error',
+  headers={'X-API-Key': 'tu-key'},
+  json={
+    'project': 'mi-app',
+    'title': 'Error en producción',
+    'error': {
+      'message': 'Database timeout',
+      'stack': error_stack,
+      'severity': 'high'
     }
-  }'
+  }
+)
+```
+
+**Node.js:**
+```javascript
+await fetch('http://localhost:3000/api/v1/notify/success', {
+  method: 'POST',
+  headers: {
+    'X-API-Key': 'tu-key',
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    project: 'mi-app',
+    title: 'Proceso completado',
+    message: 'Todo OK'
+  })
+});
 ```
 
 ## 🏗️ Stack Tecnológico
 
-- **API**: Node.js + Express
-- **Queue**: Redis + BullMQ
-- **Database**: PostgreSQL
-- **Proxy**: Nginx
-- **Push**: Ntfy.sh
-- **Discord**: Webhooks
+### Backend
+- **Node.js + Express** - API REST
+- **Socket.io** - WebSockets real-time
+- **web-push** - Web Push API
+- **Bull + Redis** - Queue system
+- **PostgreSQL** - Database
+
+### Frontend
+- **React 18 + TypeScript** - UI Framework
+- **Vite** - Build tool
+- **Tailwind CSS + Shadcn UI** - Styling
+- **React Query** - Data fetching
+- **Socket.io-client** - WebSocket client
+- **React Router** - Routing
+
+### Infrastructure
+- **Docker + Docker Compose** - Containerización
+- **Nginx** - Reverse proxy + SSL
+- **Let's Encrypt** - SSL certificates
 
 ## 📂 Estructura del Proyecto
 
 ```
 zo_notifications/
-├── api/              # API REST
-├── workers/          # Workers de procesamiento
-├── nginx/            # Configuración de Nginx
-├── database/         # Migraciones y schemas
-├── docs/             # Documentación
-└── docker-compose.yml
+├── api/                    # Backend API
+│   ├── src/
+│   │   ├── routes/        # API endpoints
+│   │   ├── services/      # Business logic
+│   │   └── middleware/    # Auth, validation
+│   └── Dockerfile
+│
+├── frontend/              # Frontend React
+│   ├── src/
+│   │   ├── pages/        # Dashboard, Settings, Stats
+│   │   ├── components/   # UI components
+│   │   ├── hooks/        # Custom hooks
+│   │   └── services/     # API client
+│   ├── public/
+│   │   └── sw.js         # Service Worker
+│   └── Dockerfile
+│
+├── workers/               # Background workers
+│   ├── webpush-worker/   # Web Push notifications
+│   └── discord-worker/   # Discord integration
+│
+├── database/              # DB migrations
+├── nginx/                 # Nginx config
+└── docs/                  # Documentation
 ```
+
+## 🔔 Web Push Notifications
+
+Las notificaciones del navegador funcionan:
+
+✅ Con el navegador cerrado
+✅ En desktop y móvil
+✅ En Chrome, Firefox, Edge, Safari (iOS 16.4+)
+✅ Sin necesidad de instalar apps
+
+El usuario solo necesita:
+1. Abrir el dashboard una vez
+2. Aceptar permisos de notificaciones
+3. ¡Listo! Ya recibirá notificaciones
+
+## 📖 Documentación
+
+- [**PLAN_WEB.md**](./docs/PLAN_WEB.md) - Arquitectura web completa
+- [**PLAN_DESARROLLO.md**](./PLAN_DESARROLLO.md) - Plan original con alternativas
+- [**API.md**](./docs/API.md) - Documentación de endpoints
+- [**QUICK_START.md**](./docs/QUICK_START.md) - Guía de inicio rápido
+- [**DECISIONES_TECNICAS.md**](./docs/DECISIONES_TECNICAS.md) - ADRs
 
 ## 🔐 Seguridad
 
 - ✅ API Key authentication
-- ✅ Rate limiting
-- ✅ SSL/TLS encryption
+- ✅ Rate limiting multinivel
+- ✅ HTTPS/SSL obligatorio en producción
+- ✅ CORS configurado
 - ✅ Request validation
-- ✅ CORS configured
-- ✅ Environment variables for secrets
+- ✅ Secrets en variables de entorno
 
 ## 📊 Monitoreo
 
@@ -146,25 +251,20 @@ zo_notifications/
 curl http://localhost:3000/api/v1/health
 ```
 
-### Estadísticas
-```bash
-curl http://localhost:3000/api/v1/stats \
-  -H "X-API-Key: tu-api-key"
-```
-
 ### Logs
 ```bash
-# Ver logs de API
-docker-compose logs -f api
+# Ver todos los logs
+docker-compose logs -f
 
-# Ver logs de workers
-docker-compose logs -f push-worker discord-worker
+# Solo un servicio
+docker-compose logs -f api
+docker-compose logs -f frontend
 ```
 
 ## 🛠️ Desarrollo
 
 ```bash
-# Modo desarrollo
+# Modo desarrollo con hot reload
 docker-compose -f docker-compose.dev.yml up
 
 # Ejecutar tests
@@ -172,39 +272,65 @@ npm test
 
 # Linting
 npm run lint
+
+# Build para producción
+docker-compose build
 ```
-
-## 🤝 Contribuir
-
-Las contribuciones son bienvenidas. Por favor:
-
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
 
 ## 📝 Roadmap
 
-- [x] Plan de desarrollo completo
-- [ ] Implementación básica de API
-- [ ] Integración con Ntfy.sh
-- [ ] Integración con Discord
-- [ ] Sistema de queue con Redis
-- [ ] Dashboard web
-- [ ] CLI tool
-- [ ] Métricas y monitoring avanzado
+### Fase 1: Backend Base ✅
+- [x] Estructura del proyecto
+- [x] Documentación completa
+- [ ] API REST básica
+- [ ] WebSocket server
+
+### Fase 2: Frontend Base
+- [ ] Setup React + Vite
+- [ ] Dashboard con lista de notificaciones
+- [ ] WebSocket client
+- [ ] Fetch historial
+
+### Fase 3: Web Push
+- [ ] Service Worker
+- [ ] Web Push API backend
+- [ ] Solicitar permisos frontend
+- [ ] Envío de notificaciones
+
+### Fase 4: Integraciones
+- [ ] Discord webhooks
+- [ ] Queue system con Redis
+- [ ] PostgreSQL + migraciones
+
+### Fase 5: Features Avanzadas
+- [ ] Vista de detalles
+- [ ] Página de configuración
+- [ ] Estadísticas y gráficos
+- [ ] PWA support
+
+### Fase 6: Producción
+- [ ] Nginx setup
+- [ ] SSL/TLS
+- [ ] Optimizaciones
+- [ ] Testing completo
+
+## 🤝 Contribuir
+
+¡Las contribuciones son bienvenidas! Por favor lee [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## 📄 Licencia
 
-MIT License - ver [LICENSE](LICENSE) para más detalles
+MIT License - ver [LICENSE](LICENSE)
 
 ## 🙏 Agradecimientos
 
-- [Ntfy.sh](https://ntfy.sh) - Push notifications
 - [Discord](https://discord.com) - Webhooks API
+- [Socket.io](https://socket.io) - WebSockets
+- [Shadcn UI](https://ui.shadcn.com) - Componentes React
 - Comunidad open source
 
 ---
 
-**Hecho con ❤️ para notificaciones confiables y sin costo**
+**Notificaciones web en tiempo real, sin apps, con costo 0** 🚀
+
+¿Preguntas? Abre un issue o consulta la [documentación completa](./docs/).
