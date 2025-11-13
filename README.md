@@ -4,15 +4,30 @@ Sistema de notificaciones **100% web** self-hosted en Docker para recibir evento
 
 ## 🎯 Características
 
+### Core Features
 - 🌐 **100% Web** - Sin apps nativas, solo navegador
 - 🔔 **Web Push Notifications** - Notificaciones del navegador (incluso cerrado)
 - ⚡ **Real-time Dashboard** - WebSockets para updates instantáneos
-- ❌ **Discord Integration** - Errores detallados en Discord
 - 📱 **PWA** - Instalable como app (opcional)
 - 🐳 **Docker Compose** - Deploy con un comando
-- 🔐 **Seguro** - API Keys, rate limiting, SSL/TLS
-- 💾 **Persistente** - PostgreSQL para historial completo
 - 💰 **Costo 0** - Todo self-hosted
+
+### Integrations
+- ❌ **Discord** - Errores detallados con rich embeds
+- 💬 **Slack** - Notificaciones con attachments
+- 📧 **Email** - SMTP con HTML templating
+
+### Security & Operations
+- 🔐 **Seguridad** - API Keys, rate limiting, SSL/TLS, Nginx
+- 💾 **Persistencia** - PostgreSQL con backups automáticos
+- 🔧 **Backups** - Scripts de backup/restore encriptados
+
+### Observability Stack (NEW!)
+- 📊 **Prometheus** - Recolección de métricas en tiempo real
+- 📈 **Grafana** - Dashboards y visualización de datos
+- 📝 **Loki + Promtail** - Agregación de logs centralizada
+- ⏱️ **Uptime Kuma** - Monitoring de disponibilidad
+- 🔍 **Exporters** - PostgreSQL, Redis y Node metrics
 
 ## 🏗️ Arquitectura
 
@@ -110,6 +125,53 @@ open http://localhost:5173
 - 📈 Métricas por proyecto
 - 📉 Tasas de éxito/error
 - 📅 Historial completo
+
+## 📊 Monitoring Stack (Producción)
+
+Para monitoreo completo del sistema, usa `docker-compose.prod.yml`:
+
+```bash
+# Iniciar con stack completo de monitoring
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### Servicios Incluidos
+
+| Servicio | Puerto | Descripción |
+|----------|--------|-------------|
+| **Grafana** | 3001 | Dashboards y visualización |
+| **Prometheus** | 9090 | Métricas del sistema |
+| **Loki** | 3100 | Agregación de logs |
+| **Uptime Kuma** | 3002 | Monitoring de uptime |
+| **API** | 3000 | API REST + Metrics endpoint |
+| **Frontend** | 5173 | Dashboard React |
+
+### Acceder a los Dashboards
+
+```bash
+# Grafana (usuario: admin, password: admin)
+open http://localhost:3001
+
+# Prometheus
+open http://localhost:9090
+
+# Uptime Kuma (crear cuenta en primer acceso)
+open http://localhost:3002
+```
+
+### Métricas Disponibles
+
+El API expone métricas en `/metrics` para Prometheus:
+
+- **HTTP Metrics**: Requests, duración, status codes
+- **Notifications**: Total por tipo, proyecto, duración
+- **Queues**: Profundidad, jobs procesados, fallos
+- **WebSocket**: Conexiones activas, mensajes
+- **Database**: Conexiones, query duration
+- **Redis**: Operaciones, memory
+- **System**: CPU, memoria, heap
+
+Ver documentación completa: [docs/MONITORING.md](docs/MONITORING.md)
 
 ## 📱 Uso
 
@@ -244,14 +306,16 @@ El usuario solo necesita:
 - ✅ Request validation
 - ✅ Secrets en variables de entorno
 
-## 📊 Monitoreo
+## 📊 Monitoreo y Logs
 
 ### Health Check
 ```bash
 curl http://localhost:3000/api/v1/health
 ```
 
-### Logs
+### Ver Logs
+
+**Consola (Docker):**
 ```bash
 # Ver todos los logs
 docker-compose logs -f
@@ -260,6 +324,28 @@ docker-compose logs -f
 docker-compose logs -f api
 docker-compose logs -f frontend
 ```
+
+**Loki + Grafana (Producción):**
+```bash
+# Iniciar stack de monitoring
+docker-compose -f docker-compose.prod.yml up -d
+
+# Acceder a Grafana Explore → Loki
+# Queries de ejemplo:
+# {container=~".*api.*"} |= "error"
+# {container=~".*worker.*"} | json | severity="high"
+```
+
+### Métricas y Dashboards
+
+El stack de producción incluye:
+
+- **Grafana Dashboards**: Visualización en tiempo real
+- **Prometheus Metrics**: Endpoint en `/metrics`
+- **Uptime Monitoring**: Status de servicios 24/7
+- **Log Aggregation**: Todos los logs en un solo lugar
+
+Ver guía completa: [docs/MONITORING.md](docs/MONITORING.md)
 
 ## 🛠️ Desarrollo
 
@@ -282,37 +368,73 @@ docker-compose build
 ### Fase 1: Backend Base ✅
 - [x] Estructura del proyecto
 - [x] Documentación completa
-- [ ] API REST básica
-- [ ] WebSocket server
+- [x] API REST básica
+- [x] WebSocket server
+- [x] PostgreSQL + migraciones
+- [x] Redis + BullMQ
 
-### Fase 2: Frontend Base
-- [ ] Setup React + Vite
-- [ ] Dashboard con lista de notificaciones
-- [ ] WebSocket client
-- [ ] Fetch historial
+### Fase 2: Frontend Base ✅
+- [x] Setup React + Vite + TypeScript
+- [x] Dashboard con lista de notificaciones
+- [x] WebSocket client real-time
+- [x] Fetch historial y filtros
+- [x] Diseño responsive con Tailwind
 
-### Fase 3: Web Push
-- [ ] Service Worker
-- [ ] Web Push API backend
-- [ ] Solicitar permisos frontend
-- [ ] Envío de notificaciones
+### Fase 3: Web Push ✅
+- [x] Service Worker
+- [x] Web Push API backend
+- [x] Solicitar permisos frontend
+- [x] Envío de notificaciones
+- [x] Gestión de subscripciones
 
-### Fase 4: Integraciones
-- [ ] Discord webhooks
-- [ ] Queue system con Redis
-- [ ] PostgreSQL + migraciones
+### Fase 4: Integraciones ✅
+- [x] Discord webhooks
+- [x] Slack webhooks
+- [x] Email (SMTP)
+- [x] Queue system con Redis
+- [x] Workers independientes
 
-### Fase 5: Features Avanzadas
-- [ ] Vista de detalles
-- [ ] Página de configuración
-- [ ] Estadísticas y gráficos
-- [ ] PWA support
+### Fase 5: Features Avanzadas ✅
+- [x] Vista de detalles
+- [x] Estadísticas y gráficos
+- [x] PWA support completo
+- [x] Backups automáticos
+- [x] SDK JavaScript
 
-### Fase 6: Producción
-- [ ] Nginx setup
-- [ ] SSL/TLS
-- [ ] Optimizaciones
-- [ ] Testing completo
+### Fase 6: Producción ✅
+- [x] Nginx setup con SSL
+- [x] Scripts de SSL/TLS
+- [x] Optimizaciones
+- [x] Testing y ejemplos
+- [x] Documentación completa
+
+### Fase 7: Observability Stack ✅
+- [x] Prometheus para métricas
+- [x] Grafana con dashboards
+- [x] Loki para logs
+- [x] Uptime Kuma
+- [x] Exporters (PostgreSQL, Redis, Node)
+- [x] Métricas personalizadas en API
+
+### Próximas Mejoras 🚀
+- [ ] Alertmanager para notificaciones automáticas
+- [ ] Recording rules en Prometheus
+- [ ] Más dashboards de Grafana
+- [ ] Tests automatizados (Jest, Playwright)
+- [ ] CI/CD con GitHub Actions
+- [ ] Kubernetes manifests
+- [ ] Helm charts
+
+## 📚 Documentación
+
+- **[PLAN_WEB.md](PLAN_WEB.md)** - Arquitectura y decisiones técnicas
+- **[EXAMPLES.md](EXAMPLES.md)** - Ejemplos de integración (Bash, Python, Node, PHP, Go)
+- **[CHANGELOG.md](CHANGELOG.md)** - Historial de cambios
+- **[docs/MONITORING.md](docs/MONITORING.md)** - Guía completa del stack de observabilidad
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Solución de problemas comunes
+- **[docs/SECURITY.md](docs/SECURITY.md)** - Best practices de seguridad
+- **[RECOMMENDATIONS.md](RECOMMENDATIONS.md)** - Recomendaciones para producción
+- **[clients/javascript/README.md](clients/javascript/README.md)** - SDK JavaScript
 
 ## 🤝 Contribuir
 
@@ -324,10 +446,33 @@ MIT License - ver [LICENSE](LICENSE)
 
 ## 🙏 Agradecimientos
 
+### Core Stack
+- [Node.js](https://nodejs.org) - Runtime de JavaScript
+- [Express](https://expressjs.com) - Framework web
+- [React](https://react.dev) - Framework UI
+- [Socket.io](https://socket.io) - WebSockets real-time
+- [BullMQ](https://docs.bullmq.io) - Queue system
+- [PostgreSQL](https://www.postgresql.org) - Database
+- [Redis](https://redis.io) - Cache y pub/sub
+
+### Integrations
 - [Discord](https://discord.com) - Webhooks API
-- [Socket.io](https://socket.io) - WebSockets
-- [Shadcn UI](https://ui.shadcn.com) - Componentes React
-- Comunidad open source
+- [Slack](https://slack.com) - Webhooks API
+- [Web Push Protocol](https://web.dev/push-notifications-overview) - Browser notifications
+
+### Monitoring Stack
+- [Prometheus](https://prometheus.io) - Metrics collection
+- [Grafana](https://grafana.com) - Dashboards
+- [Loki](https://grafana.com/oss/loki) - Log aggregation
+- [Uptime Kuma](https://github.com/louislam/uptime-kuma) - Uptime monitoring
+
+### UI & Tooling
+- [Vite](https://vitejs.dev) - Build tool
+- [Tailwind CSS](https://tailwindcss.com) - CSS framework
+- [Docker](https://www.docker.com) - Containerization
+- [Nginx](https://nginx.org) - Reverse proxy
+
+Comunidad open source ❤️
 
 ---
 

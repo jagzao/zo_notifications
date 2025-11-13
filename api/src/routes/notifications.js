@@ -12,6 +12,7 @@ import database from '../services/database.js';
 import redis from '../services/redis.js';
 import queue from '../services/queue.js';
 import logger from '../services/logger.js';
+import { notificationsTotal } from '../services/metrics.js';
 
 const router = express.Router();
 
@@ -67,6 +68,9 @@ router.post('/success', validate(successNotificationSchema), async (req, res) =>
       project: notification.project,
       apiKey: req.apiKey.substring(0, 10) + '...'
     });
+
+    // Actualizar métrica
+    notificationsTotal.inc({ type: 'success', project: notification.project });
 
     res.status(200).json({
       success: true,
@@ -131,6 +135,9 @@ router.post('/error', validate(errorNotificationSchema), async (req, res) => {
       apiKey: req.apiKey.substring(0, 10) + '...'
     });
 
+    // Actualizar métrica
+    notificationsTotal.inc({ type: 'error', project: notification.project });
+
     res.status(200).json({
       success: true,
       notification_id: saved.id,
@@ -187,6 +194,9 @@ router.post('/warning', validate(warningNotificationSchema), async (req, res) =>
       apiKey: req.apiKey.substring(0, 10) + '...'
     });
 
+    // Actualizar métrica
+    notificationsTotal.inc({ type: 'warning', project: notification.project });
+
     res.status(200).json({
       success: true,
       notification_id: saved.id,
@@ -229,6 +239,9 @@ router.post('/info', validate(infoNotificationSchema), async (req, res) => {
       project: notification.project,
       apiKey: req.apiKey.substring(0, 10) + '...'
     });
+
+    // Actualizar métrica
+    notificationsTotal.inc({ type: 'info', project: notification.project });
 
     res.status(200).json({
       success: true,

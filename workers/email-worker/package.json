@@ -1,0 +1,28 @@
+{
+  "name": "zo-notifications-email-worker",
+  "version": "1.0.0",
+  "description": "Worker para enviar notificaciones por email",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "email",
+    "notifications",
+    "worker"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "bullmq": "^5.1.5",
+    "ioredis": "^5.3.2",
+    "nodemailer": "^6.9.8",
+    "winston": "^3.11.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

@@ -9,12 +9,15 @@ import database from './services/database.js';
 import redis from './services/redis.js';
 import { rateLimitByIP } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { metricsMiddleware } from './middleware/metrics.js';
+import { websocketConnections, websocketMessagesTotal } from './services/metrics.js';
 
 // Routes
 import healthRoutes from './routes/health.js';
 import notificationRoutes from './routes/notifications.js';
 import webpushRoutes from './routes/webpush.js';
 import statsRoutes from './routes/stats.js';
+import metricsRoutes from './routes/metrics.js';
 
 // Crear app Express
 const app = express();
@@ -39,6 +42,9 @@ app.use(express.json({ limit: config.maxRequestSize }));
 app.use(express.urlencoded({ extended: true, limit: config.maxRequestSize }));
 app.use(rateLimitByIP); // Rate limiting por IP
 
+// Métricas middleware
+app.use(metricsMiddleware);
+
 // Logger de requests
 app.use((req, res, next) => {
   logger.debug('Incoming request', {
@@ -55,6 +61,7 @@ app.use('/api/v1', healthRoutes);
 app.use('/api/v1/notify', notificationRoutes);
 app.use('/api/v1/webpush', webpushRoutes);
 app.use('/api/v1/stats', statsRoutes);
+app.use('/', metricsRoutes); // Prometheus metrics en /metrics (no /api/v1/metrics)
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -79,8 +86,12 @@ app.use(errorHandler);
 io.on('connection', (socket) => {
   logger.info('WebSocket client connected', { socketId: socket.id });
 
+  // Actualizar métrica de conexiones
+  websocketConnections.inc();
+
   socket.on('disconnect', () => {
     logger.info('WebSocket client disconnected', { socketId: socket.id });
+    websocketConnections.dec();
   });
 
   socket.on('error', (error) => {
@@ -99,6 +110,9 @@ async function subscribeToNotifications() {
 
       // Emitir a todos los clientes conectados
       io.emit('notification', notification);
+
+      // Actualizar métrica de mensajes WebSocket
+      websocketMessagesTotal.inc({ event_type: 'notification' });
     });
 
     logger.info('Subscribed to Redis notifications channel');
